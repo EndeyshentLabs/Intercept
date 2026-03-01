@@ -1,0 +1,76 @@
+name: LCC build and test
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+
+  strategy:
+    fail-fast: false
+    matrix:
+      os: [ubuntu-latest, windows-latest] # macOS is not officially supported by LCC
+      build_type: [Debug, Release]
+      # TODO: clang-cl
+      c_compiler: [cl, gcc, clang]
+
+      include:
+        - os: windows-latest
+          c_compiler: cl
+          cxx_compiler: cl
+        - os: ubuntu-latest
+          c_compiler: gcc
+          cxx_compiler: g++
+        - os: ubuntu-latest
+          c_compiler: clang
+          cxx_compiler: clang++
+
+      exclude:
+        - os: windows-latest
+          c_compiler: gcc
+        - os: windows-latest
+          c_compiler: clang
+        - os: ubuntu-latest
+          c_compiler: cl
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Configure CMake
+      working-directory: ${{ github.workspace }}
+      run: >
+        cmake -B build
+        -DCMAKE_CXX_COMPILER=${{ matrix.cxx_compiler }}
+        -DCMAKE_C_COMPILER=${{ matrix.c_compiler }}
+        -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+        -S ${{ github.workspace }}
+
+    - name: Build
+      working-directory: ${{ github.workspace }}
+      run: cmake --build build --config ${{ matrix.build_type }}
+
+    - name: Install emacs for tests
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y emacs-nox
+
+    - name: Configure tests
+      working-directory: "${{ github.workspace }}/tst"
+      run: >
+        cmake -B build
+        -DCMAKE_CXX_COMPILER=${{ matrix.cxx_compiler }}
+        -DCMAKE_C_COMPILER=${{ matrix.c_compiler }}
+        -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+        -S .
+
+    - name: Build tests
+      working-directory: "${{ github.workspace }}/tst"
+      run: cmake --build build --config ${{ matrix.build_type }}
+
+    - name: Run tests
+      working-directory: "${{ github.workspace }}/tst"
+      run: cmake --build build -t test
